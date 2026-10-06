@@ -167,8 +167,45 @@ function tractStyle(){ return {color:'#7A7768', weight:1, fillColor:'#E4E1D6', f
 const tractLayer = L.geoJSON(TRACTS, {style:tractStyle}).addTo(map);
 map.fitBounds(tractLayer.getBounds());
 
-const tractCentroid = {};
-TRACTS.features.forEach(f => { tractCentroid[f.properties.GEOID] = [f.properties.clon, f.properties.clat]; });
+// ---- polygon/polygon overlap test (for "which tract(s) does the drawn area touch") ----
+function segmentsIntersect(p1,p2,p3,p4){
+  const d = (ax,ay,bx,by,cx,cy)=> (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+  const d1 = d(p3[0],p3[1],p4[0],p4[1],p1[0],p1[1]);
+  const d2 = d(p3[0],p3[1],p4[0],p4[1],p2[0],p2[1]);
+  const d3 = d(p1[0],p1[1],p2[0],p2[1],p3[0],p3[1]);
+  const d4 = d(p1[0],p1[1],p2[0],p2[1],p4[0],p4[1]);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+// ringA, ringB: arrays of [lon,lat] points (open or closed ring, both treated as closed)
+function ringsOverlap(ringA, ringB){
+  // 1. any vertex of A inside B
+  for(const p of ringA){ if(pointInPolygon(p[0], p[1], ringB.map(q=>({lng:q[0],lat:q[1]})))) return true; }
+  // 2. any vertex of B inside A
+  for(const p of ringB){ if(pointInPolygon(p[0], p[1], ringA.map(q=>({lng:q[0],lat:q[1]})))) return true; }
+  // 3. any edge crossing
+  for(let i=0;i<ringA.length;i++){
+    const a1=ringA[i], a2=ringA[(i+1)%ringA.length];
+    for(let j=0;j<ringB.length;j++){
+      const b1=ringB[j], b2=ringB[(j+1)%ringB.length];
+      if(segmentsIntersect(a1,a2,b1,b2)) return true;
+    }
+  }
+  return false;
+}
+function tractsOverlappingDrawn(ring){
+  // ring: array of {lat,lng} from the drawn Leaflet polygon
+  const drawnRing = ring.map(p => [p.lng, p.lat]);
+  const hits = [];
+  TRACTS.features.forEach(f=>{
+    const geom = f.geometry;
+    const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
+    for(const poly of polys){
+      const outer = poly[0]; // outer ring, [lon,lat] pairs
+      if(ringsOverlap(drawnRing, outer)){ hits.push(f.properties.GEOID); break; }
+    }
+  });
+  return hits;
+}
 
 // ---- Leaflet.draw setup ----
 const drawnItems = new L.FeatureGroup().addTo(map);
@@ -232,13 +269,11 @@ function analyzeArea(layer){
     else if(oIn && !dIn){ movedOut.push(m); lastLeaversByTract[m[10]] = (lastLeaversByTract[m[10]]||0)+1; }
   }
 
-  // which tracts make up the drawn study area itself (tract's Census internal
-  // point falls inside the drawn shape) -- used as the "your area" baseline
-  const selectedTracts = [];
-  Object.keys(tractCentroid).forEach(geoid=>{
-    const [clon, clat] = tractCentroid[geoid];
-    if(pointInPolygon(clon, clat, ring)) selectedTracts.push(geoid);
-  });
+  // which tract(s) the drawn study area itself overlaps -- used as the
+  // "your area" baseline. Overlap-based (not just centroid-in-polygon) so a
+  // small polygon drawn entirely within one large tract still correctly
+  // picks up that tract, rather than coming back empty.
+  const selectedTracts = tractsOverlappingDrawn(ring);
 
   renderStats(movedIn, movedOut, within);
   renderDemographics(movedIn, movedOut, selectedTracts);
@@ -301,7 +336,7 @@ function renderDemographics(movedIn, movedOut, selectedTracts){
     html += `<tr style="border-bottom:1px solid var(--line);"><td style="padding:7px 3px;">${label}</td><td style="text-align:right; padding:7px 3px; font-family:'IBM Plex Mono'; color:${GOLD_DEEP};">${fmtDemo(vArea,kind)}</td><td style="text-align:right; padding:7px 3px; font-family:'IBM Plex Mono'; color:${TEAL_DEEP};">${fmtDemo(vIn,kind)}</td><td style="text-align:right; padding:7px 3px; font-family:'IBM Plex Mono'; color:${CORAL_DEEP};">${fmtDemo(vOut,kind)}</td></tr>`;
   });
   html += '</table>';
-  html += `<p style="font-size:12px; color:var(--ink-soft); margin-top:12px; margin-bottom:0;">"Your area" = the ${selectedTracts.length} tract${selectedTracts.length===1?'':'s'} whose Census-designated center falls inside what you drew. "Arrivals from" = the tracts people moved into your area <i>from</i> (n=${movedIn.length}). "Leavers to" = the tracts people who left your area moved <i>to</i> (n=${movedOut.length}). Compare column 1 to columns 2&ndash;3 to see whether the people arriving/leaving come from richer, poorer, older, younger, or differently-composed places than your area itself &mdash; and compare columns 2 and 3 to each other to see if the outflow and inflow are symmetric.</p>`;
+  html += `<p style="font-size:12px; color:var(--ink-soft); margin-top:12px; margin-bottom:0;">"Your area" = the ${selectedTracts.length} tract${selectedTracts.length===1?'':'s'} that what you drew overlaps. "Arrivals from" = the tracts people moved into your area <i>from</i> (n=${movedIn.length}). "Leavers to" = the tracts people who left your area moved <i>to</i> (n=${movedOut.length}). Compare column 1 to columns 2&ndash;3 to see whether the people arriving/leaving come from richer, poorer, older, younger, or differently-composed places than your area itself &mdash; and compare columns 2 and 3 to each other to see if the outflow and inflow are symmetric.</p>`;
   document.getElementById('demoBody').innerHTML = html;
 }
 
@@ -318,12 +353,6 @@ function ageMix(arr){
   return counts;
 }
 
-function avgHomeValue(arr){
-  const vals = arr.map(m=>m[4]).filter(v=>v!==null && v!==undefined);
-  if(!vals.length) return null;
-  return vals.reduce((a,b)=>a+b,0)/vals.length;
-}
-
 function fmtMoney(v){ return v==null ? 'n/a' : '$'+Math.round(v).toLocaleString(); }
 
 function renderStats(movedIn, movedOut, within){
@@ -332,8 +361,6 @@ function renderStats(movedIn, movedOut, within){
 
   const inPrice = avgPrice(movedIn, 'dest');
   const outPrice = avgPrice(movedOut, 'orig');
-  const inHV = avgHomeValue(movedIn.filter(m=>m[0]==='DA'));
-  const outHV = avgHomeValue(movedOut.filter(m=>m[0]==='DA'));
 
   let html = '';
   html += '<div class="stat-row">';
@@ -357,7 +384,6 @@ function renderStats(movedIn, movedOut, within){
     html += '<div class="chart-mini"><canvas id="cAge"></canvas></div>';
   }
 
-  html += `<p style="font-size:13px; color:var(--ink-soft); margin-top:10px;">Modeled home value (Data Axle subset): arrivals avg <b>${fmtMoney(inHV)}</b>, leavers avg <b>${fmtMoney(outHV)}</b>.</p>`;
 
   body.innerHTML = html;
 
