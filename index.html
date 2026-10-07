@@ -311,7 +311,7 @@ function tractSetAvg(geoids, field){
 
 function renderDemographics(movedIn, movedOut, selectedTracts){
   const panel = document.getElementById('demoPanel');
-  if(!movedIn.length && !movedOut.length){ panel.style.display='none'; return; }
+  if(!movedIn.length && !movedOut.length && !(selectedTracts && selectedTracts.length)){ panel.style.display='none'; return; }
   panel.style.display = 'block';
 
   const rows = [
