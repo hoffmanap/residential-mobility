@@ -27,7 +27,7 @@ Both sources were fuzzy-matched by address (house-number + zip exact blocking, t
 
 **Geocoding:** mover addresses only carried zip codes, not coordinates, so all 29,051 unique origin/destination addresses were batch-geocoded through the [U.S. Census Bureau's free address geocoder](https://geocoding.geo.census.gov/geocoder/) (94.7% match rate) to get lat/lon and a census tract for each one.
 
-**Tract boundaries:** Census TIGER/Line tract polygons, filtered to El Paso County (FIPS 48141), simplified for file size.
+**Tract boundaries:** 2020-vintage Census tract polygons (188 tracts in El Paso County, FIPS 48141) from the Census TIGERweb service, simplified for file size. These match the tract IDs returned by the geocoder and used by the ACS data, so every mover and every demographic figure joins to a drawable polygon.
 
 **Census ACS demographics:** 2019–2023 ACS 5-year estimates, pulled tract-by-tract from the Census Bureau's Data API (`api.census.gov/data/2023/acs/acs5`) and baked into the page as static data — the API key used to pull it is never stored in this repo or shipped to the browser; it was used once, server-side, to generate the embedded dataset.
 
