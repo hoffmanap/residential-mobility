@@ -54,8 +54,10 @@ a{color:inherit;}
 .chart-title:first-child{margin-top:4px;}
 .divider{border-top:2px dashed var(--line); margin:16px 0 0;}
 .map-legend{display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-top:2px solid var(--ink); font-size:13px; font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); flex-wrap:wrap; gap:10px;}
-.scale{display:flex; align-items:center; gap:6px;}
+.scale{display:flex; align-items:center; gap:8px;}
 .scale .sw{width:16px; height:16px; border:1px solid var(--ink);}
+.scale-bar{display:flex; align-items:center; gap:8px; font-size:11px; letter-spacing:.03em;}
+.scale-bar .grad{width:130px; height:10px; border:1px solid var(--ink); border-radius:3px;}
 
 .panel{background:#fff; border:2px solid var(--ink); border-radius:8px; padding:22px 22px 18px; box-shadow:6px 6px 0 var(--ink); margin-bottom:22px;}
 .panel h3{font-size:20px; margin-bottom:12px;}
@@ -91,7 +93,7 @@ footer{padding:40px 0 70px; font-size:13px; color:var(--ink-soft); font-family:'
   <div class="wrap">
     <div class="eyebrow">El Paso filtering research &mdash; supplemental tool</div>
     <h1>Draw a boundary anywhere in El Paso. See <span class="hl">who moved in</span>, who moved out, and what they paid.</h1>
-    <p class="sub">18,027 real, address-matched moves (2019&ndash;2026), geocoded with the U.S. Census Bureau's address geocoder &mdash; combining Data Axle mover records and El Paso Water change-of-address data. Draw any shape on the map and this traces every move with one end inside it.</p>
+    <p class="sub">18,027 real, address-matched moves (2019&ndash;2026), drawn from USPS Change of Address records and geocoded with the U.S. Census Bureau's address geocoder. Draw any shape on the map and this traces every move with one end inside it.</p>
   </div>
 </div>
 
@@ -142,7 +144,7 @@ footer{padding:40px 0 70px; font-size:13px; color:var(--ink-soft); font-family:'
 
 <footer>
   <div class="wrap">
-    18,027 of 19,815 traced moves (91%) geocoded on both ends via the Census Bureau's free batch address geocoder (94.7% address match rate). Tract boundaries: Census TIGER/Line, El Paso County. Sources: Data Axle mover records; El Paso Water move-in/move-out records, matched to MLS sales and rental listings by address.
+    18,027 of 19,815 traced moves (91%) geocoded on both ends via the Census Bureau's free batch address geocoder (94.7% address match rate). Tract boundaries: Census TIGER/Line, El Paso County. Source: USPS Change of Address records, matched to MLS sales and rental listings by address.
   </div>
 </footer>
 
@@ -435,14 +437,17 @@ function renderStats(movedIn, movedOut, within){
 // values nearly indistinguishable from the basemap itself.
 const NODATA_FILL = '#EDEAE0';
 function lerp(c0,c1,t){ return [0,1,2].map(i=>Math.round(c0[i]+(c1[i]-c0[i])*t)); }
-function colorScale(v, max){
-  if(!v) return NODATA_FILL;
-  const t = Math.pow(Math.min(1, v/Math.max(1,max)), 0.6); // gamma-boost low end
+function colorRamp(t){
   const stops = [[255,197,61],[255,90,95],[91,79,233]]; // gold -> coral -> violet
   const [c0,c1] = t < 0.5 ? [stops[0],stops[1]] : [stops[1],stops[2]];
   const tt = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
   const [r,g,b] = lerp(c0,c1,tt);
   return `rgb(${r},${g},${b})`;
+}
+function colorScale(v, max){
+  if(!v) return NODATA_FILL;
+  const t = Math.pow(Math.min(1, v/Math.max(1,max)), 0.6); // gamma-boost low end
+  return colorRamp(t);
 }
 
 function resetChoropleth(){
@@ -458,11 +463,15 @@ function updateChoropleth(){
   tractLayer.eachLayer(l=>{
     const geoid = l.feature.properties.GEOID;
     const v = data[geoid] || 0;
-    l.setStyle({ color:'#7A7768', weight:1, fillColor:colorScale(v,max), fillOpacity: v?0.8:0.15 });
+    l.setStyle({ color:'#7A7768', weight:1, fillColor:colorScale(v,max), fillOpacity: v?0.45:0.08 });
     l.bindTooltip(`${l.feature.properties.NAME||geoid}: ${v} ${MODE_LABELS[choroMode]} move${v===1?'':'s'}`);
   });
+  // continuous gradient bar instead of discrete class-break swatches, so the
+  // legend reads as "fewer moves <-> more moves" rather than named buckets.
+  const gradCss = Array.from({length:11}, (_,i)=>colorRamp(Math.pow(i/10, 0.6))).join(',');
   document.getElementById('scaleLegend').innerHTML =
-    `<div class="scale"><span class="sw" style="background:${NODATA_FILL};"></span>0</div><div class="scale"><span class="sw" style="background:${colorScale(max*0.5,max)};"></span>${Math.round(max/2)}</div><div class="scale"><span class="sw" style="background:${colorScale(max,max)};"></span>${max}</div>`;
+    `<span>less movers</span><div class="grad" style="background:linear-gradient(to right, ${gradCss});"></div><span>more movers</span>`;
+  document.getElementById('scaleLegend').className = 'scale-bar mono';
 }
 updateChoropleth(); // show overall activity as the default, before anything is drawn
 

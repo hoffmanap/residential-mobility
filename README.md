@@ -19,11 +19,11 @@ The basemap is Esri's World Light Gray canvas + reference layer (streets and lab
 
 ## Data sources and how this was built
 
-**Movers (19,815 traced address changes, 18,027 geocoded on both ends):**
+**Movers (19,815 traced address changes, 18,027 geocoded on both ends):** all drawn from USPS Change of Address records, pulled from two distributors of that same underlying data:
 - Data Axle mover records (6,252 moves) — carries age bracket, a modeled household-value estimate, and distance moved, in addition to origin/destination address.
-- El Paso Water change-of-address records (13,563 genuine address changes, after dropping same-address account updates) — each row already pairs a customer's old and new service address directly, so no separate origin/destination matching was needed for this source.
+- El Paso Water's change-of-address records (13,563 genuine address changes, after dropping same-address account updates) — each row already pairs a customer's old and new service address directly, so no separate origin/destination matching was needed for this portion.
 
-Both sources were fuzzy-matched by address (house-number + zip exact blocking, then a street-name similarity match) against combined MLS sales and rental listing data to recover a real transaction price or rent at each end of the move, with a three-tier match-confidence flag (Exact / High / Review recommended).
+Both were fuzzy-matched by address (house-number + zip exact blocking, then a street-name similarity match) against combined MLS sales and rental listing data to recover a real transaction price or rent at each end of the move, with a three-tier match-confidence flag (Exact / High / Review recommended).
 
 **Geocoding:** mover addresses only carried zip codes, not coordinates, so all 29,051 unique origin/destination addresses were batch-geocoded through the [U.S. Census Bureau's free address geocoder](https://geocoding.geo.census.gov/geocoder/) (94.7% match rate) to get lat/lon and a census tract for each one.
 
